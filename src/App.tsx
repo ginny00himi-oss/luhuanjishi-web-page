@@ -345,6 +345,9 @@ export default function App() {
       if (!scene) return;
       currentSceneIdRef.current = scene.id;
       setCurrentSceneId(scene.id);
+      markers.setMarkers(
+        scene.hotspots.map((hotspot) => markerConfig(hotspot, exploredRef.current)),
+      );
       window.setTimeout(() => decorateMarkers(scene), 0);
     });
 
@@ -493,6 +496,7 @@ export default function App() {
       setTideEffect(false);
       setSeaVolumeHigh(false);
       audioRef.current?.stopHotspot();
+      audioRef.current?.setAmbientVolume(0.42);
       if (audioEnabledRef.current) {
         void audioRef.current?.playAmbient(target.ambientAudio, reduced ? 120 : 900);
       }
@@ -562,6 +566,7 @@ export default function App() {
       }
 
       setActiveHotspot(hotspot);
+      audioRef.current?.stopHotspot();
       setAudioProgress(emptyAudioProgress);
 
       if (hotspot.effect === 'shade') setShadeEffect((value) => !value);
@@ -705,7 +710,6 @@ export default function App() {
     scenesRef.current = nextScenes;
     setSceneData(nextScenes);
     const updated = nextScenes.find((scene) => scene.id === sceneId)!;
-    tourRef.current?.updateNode(sceneNode(updated, exploredRef.current));
     markersRef.current?.setMarkers(updated.hotspots.map((hotspot) => markerConfig(hotspot, exploredRef.current)));
     setEditorStatus(`已更新 ${id}`);
     window.setTimeout(() => decorateMarkers(updated), 0);
