@@ -42,7 +42,7 @@ export interface Scene {
   nextScene: string | null;
 }
 
-export const scenes: Scene[] = [
+const sceneDefinitions: Scene[] = [
   {
     id: '01',
     title: '屠場前地・漁村入口',
@@ -683,6 +683,19 @@ export const scenes: Scene[] = [
     ],
   },
 ];
+
+const publicAssetUrl = (path: string) =>
+  `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
+
+export const scenes: Scene[] = sceneDefinitions.map((scene) => ({
+  ...scene,
+  panorama: publicAssetUrl(scene.panorama),
+  ambientAudio: publicAssetUrl(scene.ambientAudio),
+  hotspots: scene.hotspots.map((hotspot) => ({
+    ...hotspot,
+    audio: hotspot.audio ? publicAssetUrl(hotspot.audio) : null,
+  })),
+}));
 
 export const sceneById = (id: string) => scenes.find((scene) => scene.id === id);
 

@@ -2,6 +2,10 @@
 
 **Traces and Stories of Coloane**
 
+公開網站：<https://ginny00himi-oss.github.io/luhuanjishi-web-page/>
+
+GitHub 倉庫：<https://github.com/ginny00himi-oss/luhuanjishi-web-page>
+
 《路環跡事》是一個網頁端 360° 互動敘事項目。觀眾由屠場前地出發，穿過船人街、榕樹、臨水棚屋與英利魚舖，最後抵達碼頭前地及路環碼頭，沿著空間留下的「跡」尋找曾在其中發生的「事」。
 
 專案使用 React、Vite、TypeScript、Photo Sphere Viewer 與 Howler，沒有後端、地圖 API、攝影機或 AI 生成內容。
@@ -22,6 +26,21 @@ npm run build
 ```
 
 生產檔案輸出至 `dist/`。
+
+## 團隊協作
+
+第一次下載專案：
+
+```bash
+git clone https://github.com/ginny00himi-oss/luhuanjishi-web-page.git
+cd luhuanjishi-web-page
+npm install
+npm run dev
+```
+
+後續更新可在專案目錄執行 `git pull`。請勿提交 `node_modules/` 或 `dist/`；它們會分別由 `npm install` 和 `npm run build` 產生。
+
+推送至 `main` 後，`.github/workflows/deploy-pages.yml` 會自動安裝依賴、以 `/luhuanjishi-web-page/` 為基礎路徑建立生產版本，並發布到 GitHub Pages。
 
 > 麥克風與陀螺儀屬於瀏覽器受保護功能。聲音尋跡模式必須運行於 `localhost` 或 HTTPS；iOS 等裝置會在觀眾主動點擊按鈕後才詢問權限。
 
