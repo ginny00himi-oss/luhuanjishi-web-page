@@ -25,12 +25,10 @@ import {
   type Hotspot,
   type Scene,
 } from './data/scenes';
-import { useMicrophoneTrace } from './hooks/useMicrophoneTrace';
-import { TraceAudioEngine, type AudioNotice } from './lib/audio';
 import { clearTraceState, readTraceState, writeTraceState } from './lib/storage';
 
 const introduction =
-  '從屠場前地出發，穿過船人街的樹蔭、棚屋與魚舖，最後走到路環碼頭。九個場景記錄的不只是一條路線，也是路環漁村留在街道、建築、海風與居民生活中的痕跡。請點擊畫面中的物件，聆聽它們所保存的故事。';
+  '從屠場前地出發，穿過船人街的樹蔭、棚屋與魚舖，最後走到路環碼頭。九個場景記錄的不只是一條路線，也是路環漁村留在街道、建築、海風與居民生活中的痕跡。請點擊畫面中的物件，閱讀它們所保存的故事。';
 
 const wait = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, duration));
 
@@ -98,27 +96,6 @@ const sceneNode = (scene: Scene, explored: Set<string>): VirtualTourNode => {
   };
 };
 
-const formatTime = (seconds: number) => {
-  if (!Number.isFinite(seconds)) return '0:00';
-  const minutes = Math.floor(seconds / 60);
-  const remaining = Math.floor(seconds % 60).toString().padStart(2, '0');
-  return `${minutes}:${remaining}`;
-};
-
-interface AudioProgress {
-  current: number;
-  duration: number;
-  playing: boolean;
-  missing: boolean;
-}
-
-const emptyAudioProgress: AudioProgress = {
-  current: 0,
-  duration: 0,
-  playing: false,
-  missing: false,
-};
-
 export default function App() {
   const initialStored = useMemo(() => readTraceState(), []);
   const editorMode = useMemo(() => new URLSearchParams(window.location.search).get('edit') === '1', []);
@@ -133,18 +110,16 @@ export default function App() {
   const [transitioning, setTransitioning] = useState(false);
   const [transitionTitle, setTransitionTitle] = useState('');
   const [activeHotspot, setActiveHotspot] = useState<Hotspot | null>(null);
-  const [audioProgress, setAudioProgress] = useState<AudioProgress>(emptyAudioProgress);
-  const [subtitleVisible, setSubtitleVisible] = useState(true);
   const [explored, setExplored] = useState<Set<string>>(() => new Set(initialStored.explored));
   const [reduceMotion, setReduceMotion] = useState(initialStored.reduceMotion);
   const [helpOpen, setHelpOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [routeOpen, setRouteOpen] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   const [shadeEffect, setShadeEffect] = useState(false);
   const [duskEffect, setDuskEffect] = useState(false);
   const [tideEffect, setTideEffect] = useState(false);
-  const [seaVolumeHigh, setSeaVolumeHigh] = useState(false);
   const [toast, setToast] = useState('');
   const [selectedEditorHotspot, setSelectedEditorHotspot] = useState<string | null>(null);
   const [editorStatus, setEditorStatus] = useState('');
@@ -164,6 +139,7 @@ export default function App() {
   const transitioningRef = useRef(false);
   const toastTimerRef = useRef(0);
   const preloadImagesRef = useRef<HTMLImageElement[]>([]);
+  const ambienceRef = useRef<HTMLAudioElement>(null);
   const hotspotActionRef = useRef<(hotspot: Hotspot) => void>(() => undefined);
   const dragRef = useRef<{
     id: string;
@@ -177,12 +153,6 @@ export default function App() {
     toastTimerRef.current = window.setTimeout(() => setToast(''), 4200);
   }, []);
 
-  const audioRef = useRef<TraceAudioEngine | null>(null);
-  if (!audioRef.current) {
-    audioRef.current = new TraceAudioEngine((notice: AudioNotice) => showToast(notice.message));
-  }
-
-  const microphone = useMicrophoneTrace(showToast);
   const currentScene = sceneData.find((scene) => scene.id === currentSceneId) ?? sceneData[0];
 
   useEffect(() => {
@@ -204,6 +174,15 @@ export default function App() {
   useEffect(() => {
     reduceMotionRef.current = reduceMotion;
   }, [reduceMotion]);
+
+  useEffect(() => {
+    if (!scanOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setScanOpen(false);
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [scanOpen]);
 
   const preloadAdjacent = useCallback((scene: Scene) => {
     for (const image of preloadImagesRef.current) image.src = '';
@@ -455,7 +434,7 @@ export default function App() {
   useEffect(() => {
     return () => {
       window.clearTimeout(toastTimerRef.current);
-      audioRef.current?.destroy();
+      ambienceRef.current?.pause();
       for (const image of preloadImagesRef.current) image.src = '';
       preloadImagesRef.current = [];
     };
@@ -490,16 +469,9 @@ export default function App() {
       setTransitioning(true);
       setLoading(0);
       setActiveHotspot(null);
-      setAudioProgress(emptyAudioProgress);
       setShadeEffect(false);
       setDuskEffect(false);
       setTideEffect(false);
-      setSeaVolumeHigh(false);
-      audioRef.current?.stopHotspot();
-      audioRef.current?.setAmbientVolume(0.42);
-      if (audioEnabledRef.current) {
-        void audioRef.current?.playAmbient(target.ambientAudio, reduced ? 120 : 900);
-      }
 
       if (!reduced) await wait(260);
       try {
@@ -527,122 +499,69 @@ export default function App() {
     [entered, preloadAdjacent],
   );
 
-  const updateAudioProgress = useCallback((current: number, duration: number, playing: boolean) => {
-    setAudioProgress({ current, duration, playing, missing: false });
-  }, []);
-
-  const playHotspotAudio = useCallback(
-    async (hotspot: Hotspot) => {
-      if (!hotspot.audio) return;
-      const engine = audioRef.current!;
-      try {
-        if (!engine.isUnlocked) await engine.unlock();
-        engine.setMuted(false);
-        if (!audioEnabledRef.current) {
-          audioEnabledRef.current = true;
-          setAudioEnabled(true);
-          void engine.playAmbient(currentScene.ambientAudio, reduceMotionRef.current ? 120 : 700);
-        }
-        setAudioProgress(emptyAudioProgress);
-        const viewYaw = viewerRef.current?.getPosition().yaw ?? hotspot.yaw;
-        const pan = Math.sin(hotspot.yaw - viewYaw);
-        engine.playHotspot(hotspot.audio, pan, updateAudioProgress, () => {
-          setAudioProgress({ ...emptyAudioProgress, missing: true });
-        });
-      } catch {
-        showToast('此瀏覽器暫時無法開啟聲音；文字內容仍可閱讀');
-      }
-    },
-    [currentScene.ambientAudio, showToast, updateAudioProgress],
-  );
-
   const handleHotspotAction = useCallback(
     (hotspot: Hotspot) => {
       markExplored(hotspot.id);
-      setSubtitleVisible(true);
       if (hotspot.targetScene) {
         void switchScene(hotspot.targetScene);
         return;
       }
 
+      if (hotspot.externalUrl) {
+        setActiveHotspot(null);
+        setScanOpen(true);
+        return;
+      }
+
       setActiveHotspot(hotspot);
-      audioRef.current?.stopHotspot();
-      setAudioProgress(emptyAudioProgress);
 
       if (hotspot.effect === 'shade') setShadeEffect((value) => !value);
       if (hotspot.effect === 'dusk') setDuskEffect((value) => !value);
       if (hotspot.effect === 'tide') setTideEffect((value) => !value);
-      if (hotspot.effect === 'sea-volume') {
-        setSeaVolumeHigh((value) => {
-          audioRef.current?.setAmbientVolume(value ? 0.38 : 0.66);
-          return !value;
-        });
-      }
       if (hotspot.effect === 'route') setRouteOpen(true);
       if (hotspot.effect === 'archive') setArchiveOpen(true);
-
-      if (hotspot.audio && hotspot.type !== 'interview' && audioEnabledRef.current) {
-        void playHotspotAudio(hotspot);
-      }
     },
-    [markExplored, playHotspotAudio, switchScene],
+    [markExplored, switchScene],
   );
 
   hotspotActionRef.current = handleHotspotAction;
 
-  const enterExperience = useCallback(
-    async (withSound: boolean) => {
-      setEntered(true);
-      preloadAdjacent(currentScene);
-      if (!withSound) {
-        setAudioEnabled(false);
-        showToast('已靜音進入；可隨時從右上角開啟聲音');
-        return;
-      }
-      try {
-        const engine = audioRef.current!;
-        await engine.unlock();
-        engine.setMuted(false);
-        audioEnabledRef.current = true;
-        setAudioEnabled(true);
-        void engine.playAmbient(currentScene.ambientAudio, 900);
-      } catch {
-        setAudioEnabled(false);
-        showToast('聲音未能開啟；全景與文字內容仍可正常使用');
-      }
-    },
-    [currentScene, preloadAdjacent, showToast],
-  );
-
-  const toggleSound = useCallback(async () => {
-    const engine = audioRef.current!;
-    if (audioEnabledRef.current) {
-      engine.setMuted(true);
+  const enterExperience = useCallback(async () => {
+    setEntered(true);
+    preloadAdjacent(currentScene);
+    const audio = ambienceRef.current;
+    if (!audio) return;
+    audio.volume = 0.34;
+    try {
+      await audio.play();
+      audioEnabledRef.current = true;
+      setAudioEnabled(true);
+    } catch {
       audioEnabledRef.current = false;
       setAudioEnabled(false);
-      showToast('聲音已關閉');
+      showToast('瀏覽器阻止了自動播放；可從右上角開啟白噪音');
+    }
+  }, [currentScene, preloadAdjacent, showToast]);
+
+  const toggleSound = useCallback(async () => {
+    const audio = ambienceRef.current;
+    if (!audio) return;
+    if (audioEnabledRef.current) {
+      audio.pause();
+      audioEnabledRef.current = false;
+      setAudioEnabled(false);
+      showToast('環境白噪音已暫停');
       return;
     }
 
     try {
-      await engine.unlock();
-      engine.setMuted(false);
+      await audio.play();
       audioEnabledRef.current = true;
       setAudioEnabled(true);
-      void engine.playAmbient(currentScene.ambientAudio, reduceMotionRef.current ? 120 : 700);
     } catch {
-      showToast('聲音未能開啟；請檢查瀏覽器的媒體權限');
+      showToast('白噪音未能播放；請檢查瀏覽器媒體設定');
     }
-  }, [currentScene.ambientAudio, showToast]);
-
-  const toggleMicrophone = useCallback(() => {
-    if (microphone.state === 'active' || microphone.state === 'requesting') {
-      microphone.stop();
-      showToast('聲音尋跡已關閉，麥克風連線已停止');
-    } else {
-      void microphone.start();
-    }
-  }, [microphone, showToast]);
+  }, [showToast]);
 
   const toggleGyroscope = useCallback(async () => {
     const gyro = gyroRef.current;
@@ -889,7 +808,6 @@ export default function App() {
     entered ? 'is-entered' : 'is-at-threshold',
     transitioning ? 'is-transitioning' : '',
     reduceMotion ? 'reduce-motion' : '',
-    microphone.state === 'active' ? 'mic-active' : '',
     editorMode ? 'has-editor' : '',
   ]
     .filter(Boolean)
@@ -902,7 +820,12 @@ export default function App() {
       <div className={`environment-effect environment-effect--shade ${shadeEffect ? 'is-visible' : ''}`} aria-hidden="true" />
       <div className={`environment-effect environment-effect--dusk ${duskEffect ? 'is-visible' : ''}`} aria-hidden="true" />
       <div className={`environment-effect environment-effect--tide ${tideEffect ? 'is-visible' : ''}`} aria-hidden="true" />
-      <div className="microphone-ripple" aria-hidden="true">{'≈ ~ ≈ · '.repeat(30)}</div>
+      <audio
+        ref={ambienceRef}
+        src={`${import.meta.env.BASE_URL}audio/coloane-white-noise.mp3`}
+        loop
+        preload="auto"
+      />
 
       {loading < 100 && !panoramaError && (
         <div className="loading-readout" role="status" aria-live="polite">
@@ -923,19 +846,11 @@ export default function App() {
             <button
               type="button"
               className="primary-action"
-              onClick={() => void enterExperience(true)}
-              aria-label="進入路環並開啟環境聲"
+              onClick={() => void enterExperience()}
+              aria-label="進入路環並播放環境白噪音"
             >
-              <span>進入路環並開啟聲音</span>
+              <span>進入路環</span>
               <span aria-hidden="true">↗</span>
-            </button>
-            <button
-              type="button"
-              className="quiet-action"
-              onClick={() => void enterExperience(false)}
-              aria-label="靜音進入路環"
-            >
-              靜音進入
             </button>
           </div>
           <p className="drag-hint">拖動全景 · 尋找發光的字符痕跡</p>
@@ -958,21 +873,11 @@ export default function App() {
               type="button"
               className={audioEnabled ? 'is-active' : ''}
               onClick={() => void toggleSound()}
-              aria-label={audioEnabled ? '關閉聲音' : '開啟聲音'}
+              aria-label={audioEnabled ? '暫停環境白噪音' : '播放環境白噪音'}
               aria-pressed={audioEnabled}
             >
               <span aria-hidden="true">{audioEnabled ? '聲◉' : '聲○'}</span>
-              <span>聲音</span>
-            </button>
-            <button
-              type="button"
-              className={microphone.state === 'active' ? 'is-active' : ''}
-              onClick={toggleMicrophone}
-              aria-label={microphone.state === 'active' ? '關閉聲音尋跡模式' : '開啟聲音尋跡模式'}
-              aria-pressed={microphone.state === 'active'}
-            >
-              <span aria-hidden="true">麥{microphone.state === 'active' ? '◉' : '○'}</span>
-              <span>尋跡</span>
+              <span>白噪音</span>
             </button>
             <button
               type="button"
@@ -1005,10 +910,6 @@ export default function App() {
               <span>說明</span>
             </button>
           </nav>
-
-          <div className="mic-meter" aria-label={`麥克風反應強度 ${Math.round(microphone.level * 100)}%`}>
-            <span style={{ width: `${Math.max(3, microphone.level * 100)}%` }} />
-          </div>
 
           <nav className="route-bar" aria-label="九場景探索路線">
             <button
@@ -1066,7 +967,6 @@ export default function App() {
             type="button"
             onClick={() => {
               setActiveHotspot(null);
-              audioRef.current?.stopHotspot();
             }}
             aria-label="關閉熱點資料"
           >
@@ -1078,55 +978,35 @@ export default function App() {
             <h2 id="hotspot-title">{activeHotspot.label}</h2>
           </div>
           <p className="story-panel__description">{activeHotspot.description}</p>
-          {activeHotspot.subtitle && subtitleVisible && (
+          {activeHotspot.subtitle && (
             <blockquote className="subtitle-line">{activeHotspot.subtitle}</blockquote>
           )}
 
-          {activeHotspot.audio && (
-            <div className="audio-player" aria-label={`${activeHotspot.label}音訊控制`}>
-              <div className="audio-player__controls">
-                <button
-                  type="button"
-                  disabled={audioProgress.missing}
-                  onClick={() => {
-                    if (audioProgress.duration > 0) {
-                      const playing = audioRef.current?.toggleHotspot(updateAudioProgress) ?? false;
-                      setAudioProgress((progress) => ({ ...progress, playing }));
-                    } else {
-                      void playHotspotAudio(activeHotspot);
-                    }
-                  }}
-                  aria-label={audioProgress.playing ? '暫停音訊' : '播放音訊'}
-                >
-                  {audioProgress.missing ? '—' : audioProgress.playing ? 'Ⅱ' : '▶'}
-                </button>
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(0, audioProgress.duration)}
-                  step={0.1}
-                  value={Math.min(audioProgress.current, audioProgress.duration)}
-                  disabled={audioProgress.duration <= 0}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
-                    audioRef.current?.seekHotspot(next);
-                    setAudioProgress((progress) => ({ ...progress, current: next }));
-                  }}
-                  aria-label="音訊播放進度"
-                />
-                <span>{formatTime(audioProgress.current)} / {formatTime(audioProgress.duration)}</span>
-              </div>
-              <div className="audio-player__status">
-                <span>{audioProgress.missing ? '音訊待補充' : activeHotspot.type === 'interview' ? '訪談音訊' : '方向聲音'}</span>
-                <button
-                  type="button"
-                  onClick={() => setSubtitleVisible((value) => !value)}
-                  aria-pressed={subtitleVisible}
-                >
-                  字幕 {subtitleVisible ? '開' : '關'}
-                </button>
-              </div>
-            </div>
+          {activeHotspot.notes && activeHotspot.notes.length > 0 && (
+            <section className="hotspot-notes" aria-label="歷史與現場補充">
+              <h3>歷史與現場補充</h3>
+              {activeHotspot.notes.map((note) => <p key={note}>{note}</p>)}
+            </section>
+          )}
+
+          {activeHotspot.fieldPhoto && (
+            <figure className="hotspot-field-photo">
+              <img src={activeHotspot.fieldPhoto} alt={activeHotspot.fieldPhotoAlt ?? '現場資料照片'} />
+              <figcaption>最新現場拍攝資料</figcaption>
+            </figure>
+          )}
+
+          {activeHotspot.sources && activeHotspot.sources.length > 0 && (
+            <section className="hotspot-sources" aria-label="資料來源">
+              <h3>資料來源</h3>
+              <ul>
+                {activeHotspot.sources.map((source) => (
+                  <li key={`${source.label}-${source.url}`}>
+                    <a href={source.url} target="_blank" rel="noreferrer">{source.label}</a>
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
 
           <p className="explored-stamp"><span>✓</span> 已留下探索痕跡</p>
@@ -1141,8 +1021,9 @@ export default function App() {
           <ul>
             <li>拖動或滑動旋轉全景；滾輪或雙指縮放。</li>
             <li>鍵盤方向鍵可改變視線，Shift 可加快移動。</li>
-            <li>點擊呼吸字符展開故事、聲音或場景入口。</li>
-            <li>聲音尋跡只分析即時音量，不錄音、不保存、不上傳。</li>
+            <li>點擊呼吸字符展開故事、歷史補充、資料來源或場景入口。</li>
+            <li>進入後循環播放同一段環境白噪音；右上角可隨時暫停或恢復。</li>
+            <li>魚舖掃描頁只在你主動啟動時請求鏡頭權限，退出後返回目前360場景。</li>
           </ul>
           <label className="setting-switch">
             <span>
@@ -1163,6 +1044,27 @@ export default function App() {
             清除跡事記錄
           </button>
         </aside>
+      )}
+
+      {scanOpen && (
+        <section className="scan-layer" role="dialog" aria-modal="true" aria-label="棠記魚舖手勢掃描">
+          <div className="scan-layer__toolbar">
+            <div>
+              <span>LIVE ARCHIVE / TONG KEI</span>
+              <strong>棠記魚舖手勢掃描</strong>
+            </div>
+            <button type="button" onClick={() => setScanOpen(false)} aria-label="退出掃描並返回360場景">
+              <span>退出掃描</span>
+              <span aria-hidden="true">×</span>
+            </button>
+          </div>
+          <iframe
+            src="https://ginny00himi-oss.github.io/macau-rongji/"
+            title="棠記魚舖手勢掃描檔案"
+            allow="camera"
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        </section>
       )}
 
       {routeOpen && (

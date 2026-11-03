@@ -1,9 +1,10 @@
+import { hotspotDetails, type HotspotSource } from './hotspotDetails';
+
 export type HotspotType =
   | 'story'
-  | 'sound'
   | 'navigation'
   | 'effect'
-  | 'interview'
+  | 'scan'
   | 'archive'
   | 'route';
 
@@ -11,7 +12,6 @@ export type HotspotEffect =
   | 'shade'
   | 'dusk'
   | 'tide'
-  | 'sea-volume'
   | 'route'
   | 'archive';
 
@@ -22,11 +22,17 @@ export interface Hotspot {
   description: string;
   yaw: number;
   pitch: number;
-  audio: string | null;
+  /** Legacy metadata only; the 360 experience no longer renders or plays audio. */
+  audio?: string | null;
   subtitle: string;
   icon: string;
   targetScene: string | null;
   effect?: HotspotEffect;
+  externalUrl?: string;
+  notes?: string[];
+  sources?: HotspotSource[];
+  fieldPhoto?: string;
+  fieldPhotoAlt?: string;
 }
 
 export interface Scene {
@@ -36,7 +42,8 @@ export interface Scene {
   panorama: string;
   intro: string;
   initialView: { yaw: number; pitch: number; zoom: number };
-  ambientAudio: string;
+  /** Legacy metadata only; ambient playback has been removed from the interface. */
+  ambientAudio?: string;
   hotspots: Hotspot[];
   previousScene: string | null;
   nextScene: string | null;
@@ -68,7 +75,7 @@ const sceneDefinitions: Scene[] = [
       },
       {
         id: '01-sea',
-        type: 'sound',
+        type: 'story',
         label: '海面',
         description: '從前地望向海面，水聲仍是辨認村落位置的一條聽覺線索。',
         yaw: 0.1,
@@ -88,6 +95,18 @@ const sceneDefinitions: Scene[] = [
         audio: null,
         subtitle: '樹冠在前地上方展開，為進入舊村標出方向。',
         icon: '樹',
+        targetScene: null,
+      },
+      {
+        id: '01-faith',
+        type: 'story',
+        label: '信仰的港灣',
+        description: '船人街周邊的三聖宮與譚公廟，把漁民出海祈安、社區節慶與路環舊稱「鹽灣」連在一起。',
+        yaw: -1.72,
+        pitch: 0.08,
+        audio: null,
+        subtitle: '三聖宮建於1865年；譚公廟建於1862年。',
+        icon: '信',
         targetScene: null,
       },
       {
@@ -252,7 +271,7 @@ const sceneDefinitions: Scene[] = [
       },
       {
         id: '04-windows',
-        type: 'sound',
+        type: 'story',
         label: '門窗內側',
         description: '門窗把街道與室內維持在很近的距離。聲音刻意保持模糊，只留下生活存在的線索。',
         yaw: 1.82,
@@ -325,7 +344,7 @@ const sceneDefinitions: Scene[] = [
       },
       {
         id: '05-shop-door',
-        type: 'sound',
+        type: 'story',
         label: '店舖入口',
         description: '入口把木門、室內活動和吹入棚屋的海風疊在一處。',
         yaw: -0.72,
@@ -434,27 +453,40 @@ const sceneDefinitions: Scene[] = [
       },
       {
         id: '06-bees',
-        type: 'sound',
-        label: '蜂群',
-        description: '魚乾、氣味、昆蟲與經營環境彼此相關。蜂鳴提醒我們，檔案也包含不容易被文字保存的感官條件。',
+        type: 'story',
+        label: '昆蟲活動',
+        description: '魚乾、氣味、溫度與昆蟲活動共同構成店舖環境，也把保存、清潔和防蟲帶進日常經營。',
         yaw: 1.16,
         pitch: 0.18,
         audio: '/audio/hotspots/06-bees.mp3',
-        subtitle: '靠近店面上方的輕微蜂鳴。',
-        icon: '蜂',
+        subtitle: '未經物種鑑定，不把現場昆蟲直接判定為特定蜂種。',
+        icon: '生',
         targetScene: null,
       },
       {
-        id: '06-interview',
-        type: 'interview',
-        label: '店主訪談',
-        description: '這裡預留店主訪談的獨立音訊位置。現階段尚未提供錄音。',
+        id: '06-industry-change',
+        type: 'story',
+        label: '魚欄行業轉變',
+        description: '由鮮魚、醃製與本地漁獲，逐步轉向乾貨、跨地供應與旅客零售，魚欄以調整經營方式延續至今。',
         yaw: 1.78,
         pitch: -0.22,
         audio: '/audio/hotspots/06-interview.mp3',
-        subtitle: '訪談音訊待補充',
-        icon: '訪',
+        subtitle: '行業縮小了，但店舖、舊客與部分加工仍在延續。',
+        icon: '變',
         targetScene: null,
+      },
+      {
+        id: '06-tong-ke-scan',
+        type: 'scan',
+        label: '進入棠記魚舖掃描',
+        description: '打開棠記魚舖五視角手勢掃描檔案，以手掌上下掃描建築，左右揮手切換空間視角。',
+        yaw: 1.72,
+        pitch: 0.23,
+        audio: null,
+        subtitle: '掃描頁將在360體驗上方開啟，按「退出掃描」即可返回。',
+        icon: '掃',
+        targetScene: null,
+        externalUrl: 'https://ginny00himi-oss.github.io/macau-rongji/',
       },
       {
         id: '06-to-07',
@@ -483,7 +515,7 @@ const sceneDefinitions: Scene[] = [
     hotspots: [
       {
         id: '07-anchor',
-        type: 'sound',
+        type: 'story',
         label: '船錨',
         description: '船錨連結舊碼頭、漁業運輸和居民出行。它從實用工具轉成前地上的公共記憶標誌。',
         yaw: -0.27,
@@ -544,7 +576,7 @@ const sceneDefinitions: Scene[] = [
     hotspots: [
       {
         id: '08-railing',
-        type: 'sound',
+        type: 'story',
         label: '碼頭欄杆',
         description: '欄杆把行走的通道和水面分開，也持續承受海風、鹽分與人手觸碰。',
         yaw: 0.92,
@@ -631,16 +663,15 @@ const sceneDefinitions: Scene[] = [
     hotspots: [
       {
         id: '09-sea',
-        type: 'effect',
+        type: 'story',
         label: '開闊海面',
-        description: '在海面與欄杆之間調整聆聽距離，感受浪聲由遠到近。',
+        description: '從碼頭盡端望向十字門水域，海面同時連接昔日渡輪交通、漁業作業與今日沿岸生態。',
         yaw: 0.05,
         pitch: -0.2,
         audio: '/audio/hotspots/09-sea.mp3',
-        subtitle: '海浪的強弱隨聆聽距離改變。',
+        subtitle: '視線由村落伸向水域，也回到路環作為海上交通節點的歷史。',
         icon: '海',
         targetScene: null,
-        effect: 'sea-volume',
       },
       {
         id: '09-hills',
@@ -690,11 +721,18 @@ const publicAssetUrl = (path: string) =>
 export const scenes: Scene[] = sceneDefinitions.map((scene) => ({
   ...scene,
   panorama: publicAssetUrl(scene.panorama),
-  ambientAudio: publicAssetUrl(scene.ambientAudio),
-  hotspots: scene.hotspots.map((hotspot) => ({
-    ...hotspot,
-    audio: hotspot.audio ? publicAssetUrl(hotspot.audio) : null,
-  })),
+  hotspots: scene.hotspots.map((hotspot) => {
+    const detail = hotspotDetails[hotspot.id];
+    return {
+      ...hotspot,
+      ...detail,
+      fieldPhoto: detail?.fieldPhoto ? publicAssetUrl(detail.fieldPhoto) : undefined,
+      sources: detail?.sources?.map((source) => ({
+        ...source,
+        url: source.url.startsWith('/') ? publicAssetUrl(source.url) : source.url,
+      })),
+    };
+  }),
 }));
 
 export const sceneById = (id: string) => scenes.find((scene) => scene.id === id);

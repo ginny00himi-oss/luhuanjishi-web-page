@@ -8,7 +8,7 @@ GitHub 倉庫：<https://github.com/ginny00himi-oss/luhuanjishi-web-page>
 
 《路環跡事》是一個網頁端 360° 互動敘事項目。觀眾由屠場前地出發，穿過船人街、榕樹、臨水棚屋與英利魚舖，最後抵達碼頭前地及路環碼頭，沿著空間留下的「跡」尋找曾在其中發生的「事」。
 
-專案使用 React、Vite、TypeScript、Photo Sphere Viewer 與 Howler，沒有後端、地圖 API、攝影機或 AI 生成內容。
+專案使用 React、Vite、TypeScript 與 Photo Sphere Viewer，沒有自建後端或地圖 API。魚舖掃描檔案以獨立頁面嵌入，只有觀眾在掃描頁主動啟動時才會請求攝影機權限。
 
 ## 本機運行
 
@@ -42,7 +42,7 @@ npm run dev
 
 推送至 `main` 後，`.github/workflows/deploy-pages.yml` 會自動安裝依賴、以 `/luhuanjishi-web-page/` 為基礎路徑建立生產版本，並發布到 GitHub Pages。
 
-> 麥克風與陀螺儀屬於瀏覽器受保護功能。聲音尋跡模式必須運行於 `localhost` 或 HTTPS；iOS 等裝置會在觀眾主動點擊按鈕後才詢問權限。
+> 陀螺儀與攝影機屬於瀏覽器受保護功能，必須運行於 `localhost` 或 HTTPS；iOS 等裝置會在觀眾主動點擊相應按鈕後才詢問權限。
 
 ## 素材目錄
 
@@ -53,21 +53,16 @@ public/
 │  ├─ 02.png
 │  ├─ ...
 │  └─ 09.png
-└─ audio/
-   ├─ ambient/
-   │  ├─ 01.mp3
-   │  ├─ ...
-   │  └─ 09.mp3
-   └─ hotspots/
-      ├─ 01-sea.mp3
-      ├─ 02-leaves.mp3
-      ├─ ...
-      └─ 06-interview.mp3
+├─ audio/
+│  └─ coloane-white-noise.mp3
+└─ research/
+   ├─ shipman-street-board.jpg
+   └─ faith-temples-board.jpg
 ```
 
 九張全景圖均為使用者提供的 4096×2048 PNG 原圖。網站不裁切、拼接、調色或改寫檔案，只將它們作為九個獨立的等距柱狀全景節點載入。
 
-目前沒有提供聲音檔案。所有預期路徑已在 `src/data/scenes.ts` 中保留；缺少聲音時，介面會顯示「音訊待補充」，不影響全景、文字與路線瀏覽。`public/audio/ambient/README.md` 和 `public/audio/hotspots/README.md` 另有放置說明。
+`coloane-white-noise.mp3` 是整個360體驗共用的循環環境聲。兩張 `research` 圖片是現場拍攝的資料展板，用於補充船人街、三聖宮與譚公廟的說明。
 
 ## 專案結構
 
@@ -76,8 +71,7 @@ src/
 ├─ App.tsx                       # 360° 體驗、路線、檔案與控制
 ├─ components/HotspotEditor.tsx # ?edit=1 熱點編輯器
 ├─ data/scenes.ts               # 九場景與全部熱點資料
-├─ hooks/useMicrophoneTrace.ts  # 即時音量／頻譜分析與清理
-├─ lib/audio.ts                 # Howler 環境聲、方向聲與淡化
+├─ data/hotspotDetails.ts       # 熱點歷史補充、來源與現場圖片
 ├─ lib/storage.ts               # 探索進度 localStorage
 ├─ styles.css                   # 沉浸式 ASCII 視覺與響應式介面
 └─ types/webmcp.d.ts            # 可選的頁面代理工具型別
@@ -86,15 +80,15 @@ src/
 每個 `Scene` 包括：
 
 - `id`、`title`、`subtitle`、`panorama`、`intro`
-- `initialView`、`ambientAudio`
+- `initialView`
 - `hotspots`、`previousScene`、`nextScene`
 
 每個 `Hotspot` 包括：
 
 - `id`、`type`、`label`、`description`
 - `yaw`、`pitch`
-- `audio`、`subtitle`、`icon`、`targetScene`
-- 需要時使用可選的 `effect`
+- `subtitle`、`icon`、`targetScene`
+- 需要時使用可選的 `effect`、`externalUrl`、`notes`、`sources` 與 `fieldPhoto`
 
 ## 熱點編輯模式
 
@@ -108,29 +102,18 @@ http://localhost:5173/?edit=1
 
 1. 點擊全景，在點擊位置新增熱點。
 2. 拖動既有熱點更新 `yaw` 和 `pitch`。
-3. 修改類型、標題、描述、字幕、音訊路徑、圖標及目標場景。
+3. 修改類型、標題、描述、字幕、圖標及目標場景。
 4. 複製完整九場景 JSON，或匯出 UTF-8 `scenes.json`。
 
 瀏覽器不會直接覆寫 `src/data/scenes.ts`。完成調整後，請以匯出結果更新專案資料。
 
-## 聲音行為
+## 聲音與掃描行為
 
-- 頁面載入時不會自動播放或要求麥克風權限。
-- 「進入路環並開啟聲音」由同一次點擊解鎖 Web Audio，再播放場景環境聲。
-- 「靜音進入」不初始化播放；之後可從右上角開啟。
-- 切換場景時，上一段環境聲淡出並卸載，下一段淡入。
-- 熱點聲音依熱點與目前視線的 yaw 差計算左右聲像。
-- 訪談保留獨立播放、暫停、進度與字幕控制；未提供錄音時只顯示「訪談音訊待補充」。
-
-## 聲音尋跡與私隱
-
-聲音尋跡只在觀眾主動點擊並授權後啟動 `getUserMedia({ audio: true })`。Web Audio `AnalyserNode` 在裝置上即時讀取音量與頻譜，以控制邊緣字符、熱點呼吸和水紋強度。
-
-- 不錄音
-- 不進行語音識別
-- 不保存或上傳聲音
-- 關閉模式、離開頁面或元件卸載時，停止全部 `MediaStreamTrack`、分析動畫與 AudioContext
-- 拒絕權限或裝置不支援時，其他功能仍可正常使用
+- 頁面載入時不會播放；觀眾點擊「進入路環」後，同一段白噪音開始循環。
+- 切換360場景不會更換或重啟音軌，右上角「白噪音」按鈕可隨時暫停及恢復。
+- 網站不要求麥克風權限，也不錄音、不進行語音識別。
+- 場景06的「進入棠記魚舖掃描」會在全屏覆蓋層開啟既有掃描頁；固定的「退出掃描」按鈕會返回原來的360場景。
+- 攝影機只由掃描頁在觀眾主動啟動掃描時請求，主360頁不會自行開啟鏡頭。
 
 ## 無障礙與操作
 
@@ -153,4 +136,4 @@ http://localhost:5173/?edit=1
 8. 路環碼頭・離岸通道
 9. 路環碼頭盡端・面向海風
 
-場景切換使用約一秒的暗場、ASCII 字符溶解及聲音交叉淡化；這些場景被明確視為相互連接的記憶節點，而不是物理上無縫拼接的單一全景。
+場景切換使用約一秒的暗場及 ASCII 字符溶解；這些場景被明確視為相互連接的記憶節點，而不是物理上無縫拼接的單一全景。全程白噪音在切換期間保持連續。

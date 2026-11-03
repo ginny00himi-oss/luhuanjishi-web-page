@@ -14,10 +14,9 @@ interface HotspotEditorProps {
 
 const hotspotTypes: { value: HotspotType; label: string }[] = [
   { value: 'story', label: '文字資料' },
-  { value: 'sound', label: '局部聲音' },
   { value: 'navigation', label: '場景入口' },
   { value: 'effect', label: '畫面效果' },
-  { value: 'interview', label: '訪談' },
+  { value: 'scan', label: '外部掃描' },
   { value: 'route', label: '路線' },
   { value: 'archive', label: '檔案' },
 ];
@@ -129,14 +128,6 @@ export function HotspotEditor({
           <label className="editor-field">
             <span>字幕</span>
             <textarea value={selected.subtitle} rows={2} onChange={(event) => updateText('subtitle', event.target.value)} />
-          </label>
-          <label className="editor-field">
-            <span>音訊路徑</span>
-            <input
-              value={selected.audio ?? ''}
-              placeholder="留空代表沒有音訊"
-              onChange={(event) => onUpdate(selected.id, { audio: event.target.value || null })}
-            />
           </label>
           <label className="editor-field">
             <span>目標場景</span>
