@@ -231,7 +231,7 @@ export const hotspotDetails: Record<string, HotspotDetail> = {
     ],
     sources: [sources.driedFishHistory, sources.iengLeiMemory],
   },
-  '06-tong-ke-scan': {
+  '07-tong-ke-scan': {
     notes: [
       '此入口連接棠記魚舖的五視角手勢掃描檔案。張開手掌可上下掃描建築，左右揮手可切換正面、右前、俯視、背面與側面。',
       '攝像頭只在你點擊「啟動手勢掃描」後請求權限；掃描頁說明其用途為讀取手掌座標，不儲存鏡頭畫面。退出後會回到目前的360場景。',
